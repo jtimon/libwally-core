@@ -22,6 +22,11 @@
 #define BIP32_FLAG_KEY_PUBLIC  0x1
 /** Indicate that we want to skip hash calculation when deriving a key in @bip32_key_from_parent */
 #define BIP32_FLAG_SKIP_HASH 0x2
+/**
+ * Indicate that we want to skip public key calculation when deriving a private key in @bip32_key_from_parent.
+ * Implies BIP32_FLAG_SKIP_HASH. Incompatible with BIP32_FLAG_KEY_PUBLIC.
+ */
+#define BIP32_FLAG_SKIP_PUBLIC_KEY (0x4 | BIP32_FLAG_SKIP_HASH)
 
 /** Version codes for extended keys */
 #define BIP32_VER_MAIN_PUBLIC  0x0488B21E

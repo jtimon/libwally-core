@@ -1,8 +1,8 @@
 import unittest
 from util import *
 
-FLAG_KEY_PRIVATE, FLAG_KEY_PUBLIC, FLAG_SKIP_HASH, = 0x0, 0x1, 0x2
-ALL_DEFINED_FLAGS = FLAG_KEY_PRIVATE | FLAG_KEY_PUBLIC | FLAG_SKIP_HASH
+FLAG_KEY_PRIVATE, FLAG_KEY_PUBLIC, FLAG_SKIP_HASH, FLAG_SKIP_PUBLIC_KEY = 0x0, 0x1, 0x2, (0x2 | 0x4)
+ALL_DEFINED_FLAGS = FLAG_KEY_PRIVATE | FLAG_KEY_PUBLIC | FLAG_SKIP_HASH | FLAG_SKIP_PUBLIC_KEY
 BIP32_SERIALIZED_LEN = 78
 
 # These vectors are expressed in binary rather than base 58. The spec base 58
@@ -132,9 +132,11 @@ class BIP32Tests(unittest.TestCase):
         key_name = 'pub_key' if (flags & FLAG_KEY_PUBLIC) else 'priv_key'
         expected_cmp = getattr(expected, key_name)
         key_cmp = getattr(key, key_name)
-        self.assertEqual(h(key_cmp), h(expected_cmp))
+        if not flags & FLAG_SKIP_PUBLIC_KEY:
+            self.assertEqual(h(key_cmp), h(expected_cmp))
         self.assertEqual(key.depth, expected.depth)
         self.assertEqual(key.child_num, expected.child_num)
+        print(flags, key_name, h(key.chain_code), h(expected.chain_code))
         self.assertEqual(h(key.chain_code), h(expected.chain_code))
         # These would be more useful tests if there were any public
         # derivation test vectors
@@ -260,6 +262,22 @@ class BIP32Tests(unittest.TestCase):
                                     FLAG_KEY_PRIVATE, byref(key_out))
         self.assertEqual(ret, WALLY_EINVAL)
 
+        # Verify that asking for a public key without calculating a public key fails
+        ret = bip32_key_from_parent(byref(pub), 1,
+                                    FLAG_KEY_PUBLIC | FLAG_SKIP_PUBLIC_KEY, byref(key_out))
+        self.assertEqual(ret, WALLY_EINVAL)
+        self.derive_key_by_path(master, [1], FLAG_KEY_PUBLIC | FLAG_SKIP_PUBLIC_KEY, expected=WALLY_EINVAL)
+
+        # Verify that FLAG_KEY_PRIVATE generates the same with and without FLAG_SKIP_PUBLIC_KEY
+        ret = bip32_key_from_parent(byref(priv), 1,
+                                    FLAG_KEY_PRIVATE | FLAG_SKIP_PUBLIC_KEY, byref(key_out))
+        self.assertEqual(ret, WALLY_OK)
+        expected = ext_key()
+        ret = bip32_key_from_parent(byref(priv), 1,
+                                    FLAG_KEY_PRIVATE, byref(expected))
+        self.assertEqual(ret, WALLY_OK)
+        self.compare_keys(key_out, expected, FLAG_KEY_PRIVATE | FLAG_SKIP_PUBLIC_KEY)
+
         # Now our identities:
         # The children share the same public key
         self.assertEqual(h(pub.pub_key), h(priv.pub_key))
@@ -273,7 +291,9 @@ class BIP32Tests(unittest.TestCase):
         for flags, expected in [(FLAG_KEY_PUBLIC,                   pub_pub),
                                 (FLAG_KEY_PRIVATE,                  priv_priv),
                                 (FLAG_KEY_PUBLIC  | FLAG_SKIP_HASH, pub_pub),
-                                (FLAG_KEY_PRIVATE | FLAG_SKIP_HASH, priv_priv)]:
+                                (FLAG_KEY_PRIVATE | FLAG_SKIP_HASH, priv_priv),
+                                (FLAG_KEY_PRIVATE | FLAG_SKIP_PUBLIC_KEY, priv_priv),
+        ]:
             path_derived = self.derive_key_by_path(master, [1, 1], flags)
             self.compare_keys(path_derived, expected, flags)
 

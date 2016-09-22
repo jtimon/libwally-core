@@ -13,6 +13,7 @@
 #include <stdbool.h>
 
 #define BIP32_ALL_DEFINED_FLAGS (BIP32_FLAG_KEY_PRIVATE | BIP32_FLAG_KEY_PUBLIC | BIP32_FLAG_SKIP_HASH)
+#define INVALID_PUBLIC_FLAGS (BIP32_FLAG_KEY_PUBLIC | BIP32_FLAG_SKIP_PUBLIC_KEY)
 
 static const unsigned char SEED[] = {
     'B', 'i', 't', 'c', 'o', 'i', 'n', ' ', 's', 'e', 'e', 'd'
@@ -413,6 +414,9 @@ int bip32_key_from_parent(const struct ext_key *key_in, uint32_t child_num,
     if (!key_in || !key_out)
         return WALLY_EINVAL;
 
+    if ((flags & INVALID_PUBLIC_FLAGS) == INVALID_PUBLIC_FLAGS)
+        return WALLY_EINVAL; /* Public derivation requires producing a public key */
+
     if (!(ctx = secp_ctx()))
         return WALLY_ENOMEM;
 
@@ -472,11 +476,13 @@ int bip32_key_from_parent(const struct ext_key *key_in, uint32_t child_num,
             return wipe_key_fail(key_out); /* Out of bounds FIXME: Iterate to the next? */
         }
 
-        if (key_compute_pub_key(key_out)) {
+        if (flags & BIP32_FLAG_SKIP_PUBLIC_KEY & ~BIP32_FLAG_SKIP_HASH)
+            clear(&key_out->pub_key, sizeof(key_out->pub_key));
+        else if (key_compute_pub_key(key_out)) {
             clear(&sha, sizeof(sha));
             return wipe_key_fail(key_out);
         }
-    } else {
+    } else if (!(flags & BIP32_FLAG_SKIP_PUBLIC_KEY & ~BIP32_FLAG_SKIP_HASH)) {
         /* The returned child key ki is point(parse256(IL) + kpar)
          * In case parse256(IL) ≥ n or Ki is the point at infinity, the
          * resulting key is invalid (NOTE: pubkey_tweak_add checks both
@@ -553,8 +559,14 @@ int bip32_key_from_parent_path(const struct ext_key *key_in,
     if (flags & ~BIP32_ALL_DEFINED_FLAGS)
         return WALLY_EINVAL; /* These flags are not defined yet */
 
+    if ((flags & INVALID_PUBLIC_FLAGS) == INVALID_PUBLIC_FLAGS)
+        return WALLY_EINVAL; /* Public derivation requires producing a public key */
+
     if (!key_in || !child_num_in || !child_num_len || !key_out)
         return WALLY_EINVAL;
+
+    if (!(flags & BIP32_FLAG_KEY_PUBLIC))
+        derivation_flags |= BIP32_FLAG_SKIP_PUBLIC_KEY; /* For private keys, we can skip public key calculations too */
 
     for (i = 0; i < child_num_len; ++i) {
         struct ext_key *derived = &tmp[tmp_idx];
