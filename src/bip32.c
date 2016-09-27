@@ -476,13 +476,13 @@ int bip32_key_from_parent(const struct ext_key *key_in, uint32_t child_num,
             return wipe_key_fail(key_out); /* Out of bounds FIXME: Iterate to the next? */
         }
 
-        if (flags & BIP32_FLAG_SKIP_PUBLIC_KEY & ~BIP32_FLAG_SKIP_HASH)
+        if (flags & BIP32_FLAG_SKIP_PUBLIC_KEY)
             clear(&key_out->pub_key, sizeof(key_out->pub_key));
         else if (key_compute_pub_key(key_out)) {
             clear(&sha, sizeof(sha));
             return wipe_key_fail(key_out);
         }
-    } else if (!(flags & BIP32_FLAG_SKIP_PUBLIC_KEY & ~BIP32_FLAG_SKIP_HASH)) {
+    } else if (!(flags & BIP32_FLAG_SKIP_PUBLIC_KEY)) {
         /* The returned child key ki is point(parse256(IL) + kpar)
          * In case parse256(IL) ≥ n or Ki is the point at infinity, the
          * resulting key is invalid (NOTE: pubkey_tweak_add checks both
@@ -520,7 +520,7 @@ int bip32_key_from_parent(const struct ext_key *key_in, uint32_t child_num,
 
     key_out->depth = key_in->depth + 1;
     key_out->child_num = child_num;
-    if (flags & BIP32_FLAG_SKIP_HASH)
+    if (flags & (BIP32_FLAG_SKIP_HASH | BIP32_FLAG_SKIP_PUBLIC_KEY))
         clear_n(2, &key_out->parent160, sizeof(key_out->parent160),
                 &key_out->hash160, sizeof(key_out->hash160));
     else {

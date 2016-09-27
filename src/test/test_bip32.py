@@ -1,7 +1,7 @@
 import unittest
 from util import *
 
-FLAG_KEY_PRIVATE, FLAG_KEY_PUBLIC, FLAG_SKIP_HASH, FLAG_SKIP_PUBLIC_KEY = 0x0, 0x1, 0x2, (0x2 | 0x4)
+FLAG_KEY_PRIVATE, FLAG_KEY_PUBLIC, FLAG_SKIP_HASH, FLAG_SKIP_PUBLIC_KEY = 0x0, 0x1, 0x2, 0x4
 ALL_DEFINED_FLAGS = FLAG_KEY_PRIVATE | FLAG_KEY_PUBLIC | FLAG_SKIP_HASH | FLAG_SKIP_PUBLIC_KEY
 BIP32_SERIALIZED_LEN = 78
 
@@ -140,6 +140,14 @@ class BIP32Tests(unittest.TestCase):
         self.assertEqual(h(key.chain_code), h(expected.chain_code))
         # These would be more useful tests if there were any public
         # derivation test vectors
+        fingerprint = lambda k: h(k)[0:8]
+        if flags & (FLAG_SKIP_HASH | FLAG_SKIP_PUBLIC_KEY):
+            expected160 = self.NULL_HASH160
+            expectedFingerprint = self.NULL_HASH160[0:8]
+        else:
+            expected160 = h(expected.hash160)
+            expectedFingerprint = fingerprint(expected.parent160)
+        self.assertEqual(h(key.hash160), expected160)
         # We can only compare the first 4 bytes of the parent fingerprint
         # Since that is all thats serialized.
         # FIXME: Implement bip32_key_set_parent and test it here
