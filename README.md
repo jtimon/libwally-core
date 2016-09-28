@@ -47,9 +47,19 @@ should format your changes using [uncrustify](https://github.com/uncrustify/uncr
 version 0.60 or later. The script `./tools/uncrustify` will reformat all C
 sources in the library as needed, with the currently chosen uncrustify options.
 
-The version of uncrustify in Debian is unfortunately out of date and buggy. If
-you are using Debian this means you will need to download and build uncrustify
-from source using something like:
+You should also make sure the existing tests pass and if possible write tests
+covering any new functionality added, following the existing style.
+
+## Recommended development dependencies
+
+- [lcov](http://ltp.sourceforge.net/coverage/lcov.php)
+- [uncrustify](https://github.com/uncrustify/uncrustify.git)
+
+  v0.60 (unfortunately debian/ubuntu brings v0.59 by default)
+
+  The version of uncrustify in Debian is unfortunately out of date and buggy. If
+  you are using Debian this means you will need to download and build uncrustify
+  from source using something like:
 
 ```
 $ git clone --depth 1 https://github.com/uncrustify/uncrustify.git
@@ -60,5 +70,7 @@ $ make
 $ sudo make install
 ```
 
-You should also make sure the existing tests pass and if possible write tests
-covering any new functionality added, following the existing style.
+### Recommended development configure
+```
+$ ./configure --enable-debug --enable-export-all --enable-swig-python --enable-coverage 
+
