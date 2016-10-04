@@ -239,44 +239,72 @@ class BIP32Tests(unittest.TestCase):
     def create_master_pub_priv(self):
 
         # Start with BIP32 Test vector 1
-        master = self.get_test_master_key(vec_1)
+        self.master = self.get_test_master_key(vec_1)
         # Derive the same child public and private keys from master
-        priv = self.derive_key(master, 1, FLAG_KEY_PRIVATE)
-        pub = self.derive_key(master, 1, FLAG_KEY_PUBLIC)
-        return master, pub, priv
+        self.pub = self.derive_key(self.master, 1, FLAG_KEY_PUBLIC)
+        self.priv = self.derive_key(self.master, 1, FLAG_KEY_PRIVATE)
 
     def test_public_derivation_identities(self):
 
-        master, pub, priv = self.create_master_pub_priv()
+        self.create_master_pub_priv()
         # From the private child we can derive public and private keys
-        priv_pub = self.derive_key(priv, 1, FLAG_KEY_PUBLIC)
-        priv_priv = self.derive_key(priv, 1, FLAG_KEY_PRIVATE)
+        priv_pub = self.derive_key(self.priv, 1, FLAG_KEY_PUBLIC)
+        priv_priv = self.derive_key(self.priv, 1, FLAG_KEY_PRIVATE)
         # From the public child we can only derive a public key
-        pub_pub = self.derive_key(pub, 1, FLAG_KEY_PUBLIC)
-
-        # Verify that trying to derive a private key doesn't work
-        key_out = ext_key()
-        ret = bip32_key_from_parent(byref(pub), 1,
-                                    FLAG_KEY_PRIVATE, byref(key_out))
-        self.assertEqual(ret, WALLY_EINVAL)
+        pub_pub = self.derive_key(self.pub, 1, FLAG_KEY_PUBLIC)
 
         # Now our identities:
         # The children share the same public key
-        self.assertEqual(h(pub.pub_key), h(priv.pub_key))
+        self.assertEqual(h(self.pub.pub_key), h(self.priv.pub_key))
         # The grand-children share the same public key
         self.assertEqual(h(priv_pub.pub_key), h(priv_priv.pub_key))
         self.assertEqual(h(priv_pub.pub_key), h(pub_pub.pub_key))
         # The children and grand-children do not share the same public key
-        self.assertNotEqual(h(pub.pub_key), h(priv_pub.pub_key))
+        self.assertNotEqual(h(self.pub.pub_key), h(priv_pub.pub_key))
 
         # Test path derivation with multiple child elements
         for flags, expected in [(FLAG_KEY_PUBLIC,                   pub_pub),
                                 (FLAG_KEY_PRIVATE,                  priv_priv),
                                 (FLAG_KEY_PUBLIC  | FLAG_SKIP_HASH, pub_pub),
                                 (FLAG_KEY_PRIVATE | FLAG_SKIP_HASH, priv_priv)]:
-            path_derived = self.derive_key_by_path(master, [1, 1], flags)
+            path_derived = self.derive_key_by_path(self.master, [1, 1], flags)
             self.compare_keys(path_derived, expected, flags)
 
 
+    def test_example_calls(self):
+
+        self.create_master_pub_priv()
+        key_out = ext_key()
+        c_path = self.path_to_c([1, 1])
+
+        EXAMPLE_CASES = [
+            [bip32_key_serialize, WALLY_EINVAL, [byref(self.pub), ~ALL_DEFINED_FLAGS, byref(key_out), BIP32_SERIALIZED_LEN]],            
+            [bip32_key_serialize, WALLY_EINVAL, [byref(self.pub), FLAG_KEY_PRIVATE, byref(key_out), BIP32_SERIALIZED_LEN]],
+            [bip32_key_serialize, WALLY_EINVAL, [byref(self.pub), FLAG_KEY_PUBLIC, byref(key_out), BIP32_SERIALIZED_LEN + 1]],
+            [bip32_key_serialize, WALLY_OK, [byref(self.pub), FLAG_KEY_PUBLIC, byref(key_out), BIP32_SERIALIZED_LEN]],
+            [bip32_key_serialize, WALLY_OK, [byref(self.priv), FLAG_KEY_PRIVATE, byref(key_out), BIP32_SERIALIZED_LEN]],
+
+            # Verify that trying to derive a private key doesn't work
+            [bip32_key_from_parent, WALLY_EINVAL, [byref(self.pub), 1, FLAG_KEY_PRIVATE, byref(key_out)]],
+            # Verify that non defined flags aren't accepted
+            [bip32_key_from_parent, WALLY_EINVAL, [byref(self.pub), 1, ~ALL_DEFINED_FLAGS, byref(key_out)]],
+            [bip32_key_from_parent, WALLY_EINVAL, [byref(self.priv), 1, ~ALL_DEFINED_FLAGS, byref(key_out)]],
+            [bip32_key_from_parent, WALLY_EINVAL, [None, 1, FLAG_KEY_PRIVATE, byref(key_out)]],
+            [bip32_key_from_parent, WALLY_EINVAL, [byref(self.priv), 1, FLAG_KEY_PRIVATE, None]],
+            [bip32_key_from_parent, WALLY_OK, [byref(self.pub), 1, FLAG_KEY_PUBLIC, byref(key_out)]],
+            [bip32_key_from_parent, WALLY_OK, [byref(self.priv), 1, FLAG_KEY_PRIVATE, byref(key_out)]],
+
+            [bip32_key_from_parent_path, WALLY_EINVAL, [byref(self.master), c_path, len(c_path), ~ALL_DEFINED_FLAGS, byref(key_out)]],
+            [bip32_key_from_parent_path, WALLY_EINVAL, [None, c_path, len(c_path), FLAG_KEY_PRIVATE, byref(key_out)]],
+            [bip32_key_from_parent_path, WALLY_EINVAL, [byref(self.master), c_path, len(c_path), FLAG_KEY_PRIVATE, None]],
+            [bip32_key_from_parent_path, WALLY_EINVAL, [byref(self.master), c_path, 0, FLAG_KEY_PRIVATE, byref(key_out)]],
+            [bip32_key_from_parent_path, WALLY_OK, [byref(self.master), c_path, len(c_path), FLAG_KEY_PUBLIC, byref(key_out)]],
+            [bip32_key_from_parent_path, WALLY_OK, [byref(self.master), c_path, len(c_path), FLAG_KEY_PRIVATE, byref(key_out)]],
+
+            [bip32_key_free, WALLY_EINVAL, [None]],
+        ]
+        for (fn, expected, args) in EXAMPLE_CASES:
+            self.assertEqual(expected, fn(*args))
+ 
 if __name__ == '__main__':
     unittest.main()
