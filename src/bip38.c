@@ -18,6 +18,17 @@
 #define BIP38_FLAGS_RESERVED (BIP38_FLAG_RESERVED1 | BIP38_FLAG_RESERVED2 | \
                               BIP38_FLAG_RESERVED3 | BIP38_FLAG_RESERVED4)
 
+#define BIP38_ALL_DEFINED_FLAGS (BIP38_KEY_MAINNET |      \
+                                 BIP38_KEY_TESTNET |      \
+                                 BIP38_KEY_COMPRESSED |   \
+                                 BIP38_KEY_EC_MULT |      \
+                                 BIP38_KEY_QUICK_CHECK |  \
+                                 BIP38_KEY_RAW_MODE |     \
+                                 BIP38_KEY_SWAP_ORDER |   \
+                                 BIP38_FLAG_DEFAULT |     \
+                                 BIP38_FLAG_COMPRESSED |  \
+                                 BIP38_FLAG_HAVE_LOT)
+
 #define BIP38_DERVIED_KEY_LEN 64u
 
 #define BIP38_PREFIX   0x01
@@ -123,6 +134,9 @@ int bip38_raw_from_private_key(const unsigned char *bytes_in, size_t len_in,
     struct bip38_layout_t buf;
     int ret = WALLY_EINVAL;
 
+    if (flags & ~BIP38_ALL_DEFINED_FLAGS)
+        goto finish;
+
     if (!bytes_in || len_in != EC_PRIVATE_KEY_LEN ||
         !bytes_out || len != BIP38_SERIALIZED_LEN)
         goto finish;
@@ -173,6 +187,9 @@ int bip38_from_private_key(const unsigned char *bytes_in, size_t len_in,
     struct bip38_layout_t buf;
     int ret;
 
+    if (flags & ~BIP38_ALL_DEFINED_FLAGS)
+        return WALLY_EINVAL;
+    
     if (!output)
         return WALLY_EINVAL;
 
@@ -212,6 +229,9 @@ static int to_private_key(const char *bip38,
     struct derived_t derived;
     struct bip38_layout_t buf;
     int ret = WALLY_EINVAL;
+
+    if (flags & ~BIP38_ALL_DEFINED_FLAGS)
+        goto finish;
 
     if (!(flags & BIP38_KEY_QUICK_CHECK) &&
         (!bytes_out || len != EC_PRIVATE_KEY_LEN))
