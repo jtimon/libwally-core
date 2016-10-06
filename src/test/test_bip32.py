@@ -279,5 +279,41 @@ class BIP32Tests(unittest.TestCase):
             self.compare_keys(path_derived, expected, flags)
 
 
+    def test_example_calls(self):
+
+        master, pub, priv = self.create_master_pub_priv()
+        key_out = ext_key()
+        c_path = self.path_to_c([1, 1])
+
+        EXAMPLE_CASES = [
+            [bip32_key_serialize, WALLY_EINVAL, [byref(pub), ~ALL_DEFINED_FLAGS, byref(key_out), BIP32_SERIALIZED_LEN]],            
+            [bip32_key_serialize, WALLY_EINVAL, [byref(pub), FLAG_KEY_PRIVATE, byref(key_out), BIP32_SERIALIZED_LEN]],
+            [bip32_key_serialize, WALLY_EINVAL, [byref(pub), FLAG_KEY_PUBLIC, byref(key_out), BIP32_SERIALIZED_LEN + 1]],
+            [bip32_key_serialize, WALLY_OK, [byref(pub), FLAG_KEY_PUBLIC, byref(key_out), BIP32_SERIALIZED_LEN]],
+            [bip32_key_serialize, WALLY_OK, [byref(priv), FLAG_KEY_PRIVATE, byref(key_out), BIP32_SERIALIZED_LEN]],
+
+            # Verify that trying to derive a private key doesn't work
+            [bip32_key_from_parent, WALLY_EINVAL, [byref(pub), 1, FLAG_KEY_PRIVATE, byref(key_out)]],
+            # Verify that non defined flags aren't accepted
+            [bip32_key_from_parent, WALLY_EINVAL, [byref(pub), 1, ~ALL_DEFINED_FLAGS, byref(key_out)]],
+            [bip32_key_from_parent, WALLY_EINVAL, [byref(priv), 1, ~ALL_DEFINED_FLAGS, byref(key_out)]],
+            [bip32_key_from_parent, WALLY_EINVAL, [None, 1, FLAG_KEY_PRIVATE, byref(key_out)]],
+            [bip32_key_from_parent, WALLY_EINVAL, [byref(priv), 1, FLAG_KEY_PRIVATE, None]],
+            [bip32_key_from_parent, WALLY_OK, [byref(pub), 1, FLAG_KEY_PUBLIC, byref(key_out)]],
+            [bip32_key_from_parent, WALLY_OK, [byref(priv), 1, FLAG_KEY_PRIVATE, byref(key_out)]],
+
+            [bip32_key_from_parent_path, WALLY_EINVAL, [byref(master), c_path, len(c_path), ~ALL_DEFINED_FLAGS, byref(key_out)]],
+            [bip32_key_from_parent_path, WALLY_EINVAL, [None, c_path, len(c_path), FLAG_KEY_PRIVATE, byref(key_out)]],
+            [bip32_key_from_parent_path, WALLY_EINVAL, [byref(master), c_path, len(c_path), FLAG_KEY_PRIVATE, None]],
+            [bip32_key_from_parent_path, WALLY_EINVAL, [byref(master), c_path, 0, FLAG_KEY_PRIVATE, byref(key_out)]],
+            [bip32_key_from_parent_path, WALLY_OK, [byref(master), c_path, len(c_path), FLAG_KEY_PUBLIC, byref(key_out)]],
+            [bip32_key_from_parent_path, WALLY_OK, [byref(master), c_path, len(c_path), FLAG_KEY_PRIVATE, byref(key_out)]],
+
+            [bip32_key_free, WALLY_EINVAL, [None]],
+        ]
+        for (fn, expected, args) in EXAMPLE_CASES:
+            self.assertEqual(expected, fn(*args))
+
+
 if __name__ == '__main__':
     unittest.main()
