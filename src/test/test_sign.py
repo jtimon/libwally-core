@@ -4,6 +4,7 @@ from util import *
 FLAG_ECDSA, FLAG_SCHNORR = 1, 2
 EX_PRIV_KEY_LEN, EC_PUBIC_KEY_LEN, EC_PUBIC_KEY_UNCOMPRESSED_LEN = 32, 33, 65
 EC_SIGNATURE_LEN, EC_SIGNATURE_DER_MAX_LEN = 64, 72
+BITCOIN_MESSAGE_SERIALIZED_FLAG, BITCOIN_MESSAGE_HASH_FLAG = 0, 1
 
 class SignTests(unittest.TestCase):
 
@@ -136,6 +137,66 @@ class SignTests(unittest.TestCase):
             ret = wally_ec_public_key_from_private_key(pk, pk_len, o, o_len);
             self.assertEqual(ret, WALLY_EINVAL)
 
+    def test_format_message_invalid(self):
+        flags = BITCOIN_MESSAGE_SERIALIZED_FLAG
+        small_max_length = 30
+        bytes_in, len_in = make_cbuffer('13' * small_max_length)
+        bytes_out, len_out = make_cbuffer('00' * small_max_length)
+
+        ret, written = wally_format_bitcoin_message(bytes_in, len(bytes_in), flags, bytes_out, 15)
+        self.assertEqual((ret, written), (WALLY_OK, len_in + 26)) # Small out len
+
+        cases = [
+            (None, len_in, bytes_out, len_out), # Null bytes_in
+            (bytes_in, 0, bytes_out, len_out),  # Wrong input len
+            (bytes_in, len_in, None, len_out),  # Null output
+        ]
+        for msg, msg_len, o, o_len in cases:
+            ret, written = wally_format_bitcoin_message(msg, msg_len, flags, o, o_len)
+            self.assertEqual(ret, WALLY_EINVAL)
+
+    def hex_buf_from_string(self, msg_str):
+        msg_ascii = msg_str #.encode('ascii')
+        ret, msg_hex = wally_hex_from_bytes((msg_ascii), len(msg_ascii))
+        self.assertEqual(ret, WALLY_OK)
+        return make_cbuffer(str(msg_hex))
+
+    def single_hex_test(self, msg, msg_len, flags, expected_msg, expected_msg_len):
+        bytes_out, len_out = make_cbuffer('00' * (expected_msg_len))
+        ret, written = wally_format_bitcoin_message(msg, msg_len, flags, bytes_out, len_out)
+        self.assertEqual((ret, bytes_out, written), (WALLY_OK, expected_msg, expected_msg_len))
+
+    def test_format_message(self):
+        self.maxDiff = None
+        flags = BITCOIN_MESSAGE_SERIALIZED_FLAG
+        cases = [
+            ['aaa', '\x18Bitcoin Signed Message:\n\x03aaa'],
+            ['bbbb', '\x18Bitcoin Signed Message:\n\x04bbbb'],
+            ['a\nb\n', '\x18Bitcoin Signed Message:\n\x04a\nb\n'],
+            ['\0a\nb\0cc', '\x18Bitcoin Signed Message:\n\x07\0a\nb\0cc'],
+            ['a\0b\nc\n\0', '\x18Bitcoin Signed Message:\n\x07a\0b\nc\n\0'],
+            ['a' * 200, '\x18Bitcoin Signed Message:\n\xc8' + 'a' * 200],
+            ['b' * 253, '\x18Bitcoin Signed Message:\n\xfd\xfd\x00' + 'b' * 253],
+            ['c' * 256, '\x18Bitcoin Signed Message:\n\xfd\x00\x01' + 'c' * 256],
+            ['d' * 65534, '\x18Bitcoin Signed Message:\n\xfd\xfe\xff' + 'd' * 65534],
+            ['e' * 65535, '\x18Bitcoin Signed Message:\n\xfd\xff\xff' + 'e' * 65535],
+            ['f' * 65536, '\x18Bitcoin Signed Message:\n\xfe\x00\x00\x01\x00' + 'f' * 65536],
+            # TODO Find a better way to tests bigger messages
+            # ['g' * 4294967296, '\x18Bitcoin Signed Message:\n\xfe\x00\x00\x00\x00\x01\x00\x00\x00' + 'g' * 4294967296],
+        ]
+        for msg_str, expected_out in cases:
+            msg, msg_len = self.hex_buf_from_string(msg_str)
+            expected_msg, expected_msg_len = self.hex_buf_from_string(expected_out)
+            self.single_hex_test(msg, msg_len, flags, expected_msg, expected_msg_len)
+
+        # expected_msg, expected_msg_len = self.hex_buf_from_string('Bitcoin Signed Message:\n')
+        # # bytes_out, len_out = make_cbuffer(b'Bitcoin Signed Message:\n')
+        # bytes_out, len_out = make_cbuffer('00' * (expected_msg_len))
+        # print(expected_msg_len)
+        # print(expected_msg + bytes_out)
+        # print(expected_msg_len + len_out)
+        # # self.assertEqual(expected_msg, bytes_out)
+        # # self.single_hex_test(msg, msg_len, flags, expected_msg, expected_msg_len)
 
 if __name__ == '__main__':
     unittest.main()

@@ -2,10 +2,18 @@
 #include <include/wally_crypto.h>
 #include "secp256k1/include/secp256k1_schnorr.h"
 #include "ccan/ccan/build_assert/build_assert.h"
+#include <limits.h>
 #include <stdbool.h>
 
 #define EC_FLAGS_TYPES (EC_FLAG_ECDSA | EC_FLAG_SCHNORR)
 #define EC_FLAGS_ALL (EC_FLAG_ECDSA | EC_FLAG_SCHNORR)
+
+#define BITCOIN_MESSAGE_ALL_FLAGS (BITCOIN_MESSAGE_SERIALIZED_FLAG | BITCOIN_MESSAGE_HASH_FLAG)
+
+static const unsigned char PREFIX_LEN_16 = 253;
+static const unsigned char PREFIX_LEN_32 = 254;
+static const unsigned char PREFIX_LEN_64 = 255;
+static const char STR_MESSAGE_MAGIC[] = "Bitcoin Signed Message:\n";
 
 /* LCOV_EXCL_START */
 /* Check assumptions we expect to hold true */
@@ -224,5 +232,78 @@ int wally_ec_sig_verify(const unsigned char *pub_key, size_t pub_key_len,
              secp256k1_ecdsa_verify(ctx, &sig, bytes_in, &pub);
 
     clear_n(2, &pub, sizeof(pub), &sig, sizeof(sig));
+    return ok ? WALLY_OK : WALLY_EINVAL;
+}
+
+static size_t get_serialized_size_len(uint64_t len_in)
+{
+    if (len_in < 253)
+        return sizeof(unsigned char);
+    else if (len_in <= USHRT_MAX)
+        return sizeof(unsigned char) + sizeof(unsigned short);
+    else if (len_in <= UINT_MAX)
+        return sizeof(unsigned char) + sizeof(uint32_t);
+    return sizeof(unsigned char) + sizeof(uint64_t);
+}
+
+static int write_buf_serialize(const unsigned char *bytes_in, size_t len_in, unsigned char *bytes_out, size_t len, size_t *written)
+{
+    if (written)
+        *written = 0;
+
+    if (!bytes_in || !len_in || !bytes_out || !written)
+        return WALLY_EINVAL;
+
+    size_t serialized_size_len = get_serialized_size_len(len_in);
+    *written = serialized_size_len + len_in;
+    if (*written <= len) {
+        if (len_in < PREFIX_LEN_16) {
+            memcpy(bytes_out, (unsigned char *)&len_in, sizeof(unsigned char));
+        } else if (len_in <= USHRT_MAX) {
+            memcpy(bytes_out, &PREFIX_LEN_16, sizeof(unsigned char));
+            memcpy(bytes_out + sizeof(unsigned char), &len_in, sizeof(unsigned short));
+        } else if (len_in <= UINT_MAX) {
+            memcpy(bytes_out, &PREFIX_LEN_32, sizeof(unsigned char));
+            memcpy(bytes_out + sizeof(unsigned char), &len_in, sizeof(uint32_t));
+        } else {
+            memcpy(bytes_out, &PREFIX_LEN_64, sizeof(unsigned char));
+            memcpy(bytes_out + sizeof(unsigned char), &len_in, sizeof(uint64_t));
+        }
+        memcpy(bytes_out + serialized_size_len, bytes_in, len_in);
+    }
+    return WALLY_OK;
+}
+
+int wally_format_bitcoin_message(const unsigned char *bytes_in, size_t len_in, uint32_t flags,
+                                 unsigned char *_bytes_out, size_t _len, size_t *written)
+{
+    bool ok = bytes_in && len_in && _bytes_out && written && !(flags & ~BITCOIN_MESSAGE_ALL_FLAGS);
+    if (written) {
+        *written = 0;
+
+        size_t magic_len = sizeof(STR_MESSAGE_MAGIC) - 1;
+        unsigned char *bytes_out = _bytes_out;
+        size_t len = _len;
+        if (flags & BITCOIN_MESSAGE_HASH_FLAG) {
+            len = get_serialized_size_len(magic_len) + magic_len +
+                  get_serialized_size_len(len_in) + len_in;
+            bytes_out = wally_malloc(len);
+        }
+
+        size_t written_aux = 0;
+        ok = ok && !write_buf_serialize((unsigned char *)STR_MESSAGE_MAGIC, magic_len, bytes_out, len, &written_aux);
+        *written += written_aux;
+        size_t remaining_len = len > written_aux ? len - written_aux : 0;
+        ok = ok && !write_buf_serialize(bytes_in, len_in, bytes_out + written_aux, remaining_len, &written_aux);
+        *written += written_aux;
+
+        if (flags & BITCOIN_MESSAGE_HASH_FLAG) {
+            ok = ok && !wally_sha256d(bytes_out, *written, _bytes_out, SHA256_LEN);
+            wally_free(bytes_out);
+            *written = SHA256_LEN;
+        }
+    }
+    if (!ok && _bytes_out)
+        clear(_bytes_out, _len);
     return ok ? WALLY_OK : WALLY_EINVAL;
 }

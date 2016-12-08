@@ -412,4 +412,27 @@ WALLY_CORE_API int wally_ec_sig_verify(
     const unsigned char *sig_in,
     size_t sig_in_len);
 
+/** Flags for bitcoin message formatting */
+#define BITCOIN_MESSAGE_SERIALIZED_FLAG 0
+#define BITCOIN_MESSAGE_HASH_FLAG       1
+
+/**
+ * Append bitcoin core's preffix for signing arbitrary messages.
+ *
+ * @bytes_in: The message string to sign.
+ * @len_in: The length of @bytes_in in bytes. Can't be 0.
+ * @flags: For future extensions like returning just the hash of the message.
+ *        If BITCOIN_MESSAGE_SERIALIZED_FLAG is passed, the formatted message is put in @bytes_out.
+ *        If BITCOIN_MESSAGE_HASH_FLAG is passed, the hash is put @bytes_out.
+ * @bytes_out: Destination of the message string to sign, with the preffix added.
+ * @len: The length of @bytes_out in bytes.
+ * @written: Destination for the number of bytes written to @bytes_out.
+ */
+WALLY_CORE_API int wally_format_bitcoin_message(const unsigned char *bytes_in,
+                                                size_t len_in,
+                                                uint32_t flags,
+                                                unsigned char *bytes_out,
+                                                size_t len,
+                                                size_t *written);
+
 #endif /* LIBWALLY_CORE_CRYPTO_H */
