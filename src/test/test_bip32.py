@@ -179,17 +179,28 @@ class BIP32Tests(unittest.TestCase):
                      (0x01111111,       FLAG_KEY_PUBLIC,  WALLY_EINVAL),
                      (0x01111111,       FLAG_KEY_PRIVATE, WALLY_EINVAL)]
 
+        key_out = ext_key()
         for ver, flags, expected in ver_cases:
             no_ver = vec_1['m'][flags][8:-8]
             v_str = '0' + hex(ver)[2:]
             buf, buf_len = make_cbuffer(v_str + no_ver)
-            ret, _ = self.unserialize_key(buf, buf_len)
+            ret, key_in = self.unserialize_key(buf, buf_len)
             self.assertEqual(ret, expected)
+            if ret == WALLY_OK:
+                print(byref(key_in), flags, byref(key_out), buf_len)
+                ret = bip32_key_serialize(byref(key_in), flags, byref(key_out), buf_len)
+                self.assertEqual(WALLY_OK, ret)
+
+        master, pub, priv = self.create_master_pub_priv()
+        cases = [
+            [byref(pub), FLAG_KEY_PUBLIC],
+            [byref(priv), FLAG_KEY_PRIVATE],
+        ]
+        for (key_in, flags) in cases:
+            ret = bip32_key_serialize(key_in, flags, byref(key_out), BIP32_SERIALIZED_LEN)
+            self.assertEqual(WALLY_OK, ret)
 
         # Check invalid arguments fail
-        master = self.get_test_master_key(vec_1)
-        pub = self.derive_key(master, 1, FLAG_KEY_PUBLIC)
-        key_out = ext_key()
         cases = [
             [~ALL_DEFINED_FLAGS, BIP32_SERIALIZED_LEN],
             [FLAG_KEY_PRIVATE, BIP32_SERIALIZED_LEN],
